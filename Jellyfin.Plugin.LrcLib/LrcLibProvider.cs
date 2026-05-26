@@ -30,6 +30,9 @@ public class LrcLibProvider : ILyricProvider
     private const string SyncedFormat = "lrc";
     private const string PlainFormat = "txt";
 
+    private static readonly string UserAgent =
+        $"jellyfin-plugin-lrclib/{typeof(LrcLibProvider).Assembly.GetName().Version?.ToString() ?? "1.0"}";
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<LrcLibProvider> _logger;
 
@@ -90,9 +93,7 @@ public class LrcLibProvider : ILyricProvider
                 Path = $"/api/get/{splitId[0]}"
             };
 
-            var response = await _httpClientFactory.CreateClient(NamedClient.Default)
-                .GetFromJsonAsync<LrcLibSearchResponse>(requestUri.Uri, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            var response = await GetJsonAsync<LrcLibSearchResponse>(requestUri.Uri, cancellationToken).ConfigureAwait(false);
             if (response is null)
             {
                 throw new ResourceNotFoundException("Unable to get results for id {Id}");
@@ -181,11 +182,7 @@ public class LrcLibProvider : ILyricProvider
             Query = queryStringBuilder.ToString()
         };
 
-        var httpClient = _httpClientFactory.CreateClient(NamedClient.Default);
-
-        var response = await httpClient
-            .GetFromJsonAsync<LrcLibSearchResponse>(requestUri.Uri, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        var response = await GetJsonAsync<LrcLibSearchResponse>(requestUri.Uri, cancellationToken).ConfigureAwait(false);
         if (response is null)
         {
             return Enumerable.Empty<RemoteLyricInfo>();
@@ -246,11 +243,7 @@ public class LrcLibProvider : ILyricProvider
             Query = queryStringBuilder.ToString()
         };
 
-        var httpClient = _httpClientFactory.CreateClient(NamedClient.Default);
-
-        var response = await httpClient
-            .GetFromJsonAsync<IReadOnlyList<LrcLibSearchResponse>>(requestUri.Uri, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        var response = await GetJsonAsync<IReadOnlyList<LrcLibSearchResponse>>(requestUri.Uri, cancellationToken).ConfigureAwait(false);
         if (response is null)
         {
             return Enumerable.Empty<RemoteLyricInfo>();
@@ -265,6 +258,18 @@ public class LrcLibProvider : ILyricProvider
         var sortedResults = results.OrderByDescending(x => x.Metadata.IsSynced);
 
         return sortedResults;
+    }
+
+    private async Task<T?> GetJsonAsync<T>(Uri uri, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.UserAgent.Clear();
+        request.Headers.UserAgent.ParseAdd(UserAgent);
+
+        var httpClient = _httpClientFactory.CreateClient(NamedClient.Default);
+        using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     private List<RemoteLyricInfo> GetRemoteLyrics(LrcLibSearchResponse response)
