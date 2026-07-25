@@ -1,0 +1,28 @@
+# gitleaks — secret scanning on push / PR.
+#
+# Detection/alert only: a failed run flags a committed secret (remediation is
+# rotate-then-history-rewrite). gitleaks-action is free for PUBLIC repos; a
+# private repo would need a free GITLEAKS_LICENSE secret.
+name: gitleaks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# gitleaks-action's PR path calls GET /pulls/{N}/commits -> needs pull-requests:read.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
